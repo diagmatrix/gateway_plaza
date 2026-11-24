@@ -33,13 +33,16 @@ You need:
 
   Corepack then runs the pinned pnpm in this folder, whatever pnpm you have globally.
 
-Then install:
+- **just**, the command runner every task goes through. The [README](README.md#development)
+  lists the install command for each OS.
+
+Then set up:
 
 ```sh
-pnpm install
+just setup
 ```
 
-The install **fails on purpose** if your Node version doesn't match `engines`
+That runs `pnpm install` and installs the third-party agent skills. The install **fails on purpose** if your Node version doesn't match `engines`
 (`engineStrict` in `pnpm-workspace.yaml`), so everyone builds with the same runtime.
 Switch Node versions and run it again.
 
@@ -48,6 +51,31 @@ Line endings are normalised to LF by [`.gitattributes`](.gitattributes) on every
 
 Never commit secrets. `.env*` files are git-ignored. Only `.env.example`, which lists the
 variable names with no values, is tracked.
+
+## Running tasks
+
+Every task is a recipe in the [`justfile`](justfile). Run `just` to list them with a
+description. The main ones:
+
+| Recipe | What it does |
+|---|---|
+| `just setup` | Install dependencies and the third-party agent skills |
+| `just dev` | Start the dev server |
+| `just format` / `just format-check` | Format files / check formatting |
+| `just lint`, `just typecheck` | Lint and type-check |
+| `just test`, `just e2e` | Unit tests (Vitest) and end-to-end tests (Playwright) |
+| `just licence-check` | Fail on a dependency with an incompatible licence |
+| `just ci` | Everything CI runs, in the same order. Run it before you push. |
+| `just db-migrate` | Apply database migrations |
+| `just symbols-sync`, `just cards-sync` | Pull mana symbols and card data from Scryfall |
+
+Recipes pass extra arguments through, e.g. `just test --watch`.
+
+Recipes wrap the `package.json` scripts, so the commands live there and `pnpm run <script>`
+works too. CI calls the same recipes, so a check that passes locally passes in CI. When you
+add a task, add the script to `package.json` and a recipe with a one-line `#` comment
+above it (that comment is what `just --list` shows). Tasks whose tool isn't set up yet print
+"not set up yet" and the story that adds them.
 
 ## Branches and pull requests
 
