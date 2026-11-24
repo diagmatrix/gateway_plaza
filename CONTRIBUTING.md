@@ -75,7 +75,7 @@ Recipes wrap the `package.json` scripts, so the commands live there and `pnpm ru
 works too. CI calls the same recipes, so a check that passes locally passes in CI. When you
 add a task, add the script to `package.json` and a recipe with a one-line `#` comment
 above it (that comment is what `just --list` shows). Tasks whose tool isn't set up yet print
-"not set up yet" and the story that adds them.
+"not set up yet".
 
 ## Branches and pull requests
 
@@ -134,3 +134,16 @@ git push --force-with-lease
 - Magic: The Gathering content is used under Wizards of the Coast's Fan Content Policy, and
   Scryfall data under Scryfall's terms. The AGPL grants no rights to either. Don't add WotC
   fonts (such as Beleren), guild symbols or re-hosted card images.
+
+## Dependency updates
+
+[Renovate](https://docs.renovatebot.com/) opens update PRs, configured in
+`.github/renovate.json5`:
+
+- Minor and patch updates arrive together in one weekly PR. Each major update gets its own PR;
+  read its changelog before merging.
+- A new release must be 3 days old before Renovate proposes it. Security fixes skip that wait
+  and the weekly schedule.
+- Update PRs run the same CI as any other PR, licence check and DCO included, and are never
+  auto-merged. Review them like any other change.
+- The Dependency Dashboard issue lists pending and rate-limited updates.
