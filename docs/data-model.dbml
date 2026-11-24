@@ -1,7 +1,7 @@
 // Commander Game Tracker — data model (Postgres on Neon, Drizzle, Better Auth)
-// Reviewed table by table in US-01. Tables are added here once agreed.
+// Reviewed table by table. Tables are added here once agreed.
 // Regex character classes ([[:alpha:]]) must match Unicode letters: verify the database
-// ctype/collation on Neon in US-05's integration tests.
+// ctype/collation on Neon in the integration tests.
 // No database triggers (decision #79): the schema holds keys, FKs, unique indexes and
 // CHECKs; rules across rows are enforced by the app in transactions.
 // Conventions: snake_case, plural table names, uuid PKs (gen_random_uuid()),
@@ -485,7 +485,7 @@ Table games {
   }
 
   Note: '''
-  Creator-seat rule (US-05 AC3) applies while created_by = logged_by; once created_by is
+  Creator-seat rule applies while created_by = logged_by; once created_by is
   reassigned they differ and the rule stops. No marker column needed.
 
   Deleted playgroup (decision #80): when a group with games loses its last member, its games

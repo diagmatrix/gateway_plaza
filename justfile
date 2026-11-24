@@ -4,7 +4,7 @@
 #
 # Recipes wrap the package.json scripts, so `pnpm run <script>` keeps working
 # and the commands themselves live in one place. Scripts for tools that aren't
-# set up yet print "not set up yet" and the story that adds them.
+# set up yet print "not set up yet".
 #
 # Keep recipe bodies to plain commands (`pnpm run ...`) that read the same in
 # sh and PowerShell, so one justfile works on every OS.

@@ -1,4 +1,4 @@
-<!-- Title: short and imperative, e.g. "Add seat validation (US-36)". -->
+<!-- Title: short and imperative, e.g. "Add seat validation". -->
 
 ## What and why
 

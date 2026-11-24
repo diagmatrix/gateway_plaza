@@ -10,18 +10,18 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "node scripts/not-set-up.mjs dev US-04",
-    "lint": "node scripts/not-set-up.mjs lint US-04",
-    "format": "node scripts/not-set-up.mjs format US-04",
-    "format:check": "node scripts/not-set-up.mjs format:check US-04",
-    "typecheck": "node scripts/not-set-up.mjs typecheck US-04",
-    "test": "node scripts/not-set-up.mjs test US-04",
-    "e2e": "node scripts/not-set-up.mjs e2e US-04",
-    "licence-check": "node scripts/not-set-up.mjs licence-check US-03",
-    "db:migrate": "node scripts/not-set-up.mjs db:migrate US-04",
-    "symbols:sync": "node scripts/not-set-up.mjs symbols:sync US-19",
-    "cards:sync": "node scripts/not-set-up.mjs cards:sync US-15",
-    "skills:install": "node scripts/not-set-up.mjs skills:install US-99"
+    "dev": "node scripts/not-set-up.mjs dev",
+    "lint": "node scripts/not-set-up.mjs lint",
+    "format": "node scripts/not-set-up.mjs format",
+    "format:check": "node scripts/not-set-up.mjs format:check",
+    "typecheck": "node scripts/not-set-up.mjs typecheck",
+    "test": "node scripts/not-set-up.mjs test",
+    "e2e": "node scripts/not-set-up.mjs e2e",
+    "licence-check": "node scripts/not-set-up.mjs licence-check",
+    "db:migrate": "node scripts/not-set-up.mjs db:migrate",
+    "symbols:sync": "node scripts/not-set-up.mjs symbols:sync",
+    "cards:sync": "node scripts/not-set-up.mjs cards:sync",
+    "skills:install": "node scripts/not-set-up.mjs skills:install"
   },
   "engines": {
     "node": "^26.13.1"
