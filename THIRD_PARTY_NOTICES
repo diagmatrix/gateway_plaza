@@ -1,0 +1,12 @@
+THIRD-PARTY NOTICES
+
+Gateway Plaza is licensed under AGPL-3.0-or-later (see LICENSE). It includes the
+third-party packages below, each under its own licence.
+
+Magic: The Gathering content is not covered by any of these licences: it belongs to
+Wizards of the Coast and is used under its Fan Content Policy.
+
+This file is generated from the production dependency tree by `just notices`.
+Don't edit it by hand.
+
+The app has no third-party production dependencies yet.

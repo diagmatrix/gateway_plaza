@@ -65,6 +65,8 @@ description. The main ones:
 | `just lint`, `just typecheck` | Lint and type-check |
 | `just test`, `just e2e` | Unit tests (Vitest) and end-to-end tests (Playwright) |
 | `just licence-check` | Fail on a dependency with an incompatible licence |
+| `just notices` / `just notices-check` | Regenerate `THIRD_PARTY_NOTICES` / check it's up to date |
+| `just dco-check` | Fail on a commit without a sign-off (`origin/main..HEAD` by default) |
 | `just ci` | Everything CI runs, in the same order. Run it before you push. |
 | `just db-migrate` | Apply database migrations |
 | `just symbols-sync`, `just cards-sync` | Pull mana symbols and card data from Scryfall |
@@ -93,6 +95,34 @@ review, and the branch must be up to date with `main`.
 5. Keep the branch up to date by rebasing on `main` (`git pull --rebase origin main`) rather
    than merging `main` into it.
 6. CI must be green and a maintainer must approve before merging.
+
+### CI checks
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and every
+push to `main`. Each check is its own job that calls a `just` recipe, so `just ci` locally
+runs the same thing. The ruleset on `main` requires these jobs as status checks, by name:
+
+| Check | Recipe | Fails when |
+|---|---|---|
+| `DCO` | `just dco-check <base> <head>` | A commit in the PR has no `Signed-off-by` line (pull requests only) |
+| `Licences` | `just licence-check`, `just notices-check` | A dependency's licence is incompatible or unknown, or `THIRD_PARTY_NOTICES` is out of date |
+| `Format` | `just format-check` | A file isn't formatted |
+| `Lint` | `just lint` | Lint errors |
+| `Typecheck` | `just typecheck` | Type errors |
+| `Unit tests` | `just test` | A Vitest test fails |
+| `E2E tests` | `just e2e` | A Playwright test fails |
+
+Renaming a job changes its check name, so update the ruleset in the same PR. The workflow has
+no path filters on purpose: a required check that doesn't run blocks the merge.
+
+The licence check reads every installed dependency, dev dependencies included, from
+`pnpm licenses list`. The allowed SPDX licences are in
+[`scripts/licences/policy.mjs`](scripts/licences/policy.mjs); an `OR` expression passes if
+either side is allowed, an `AND` only if both are. When you add, remove or update a
+production dependency, run `just notices` and commit the regenerated `THIRD_PARTY_NOTICES`.
+The file lists packages without versions, so most Renovate PRs leave it alone. When one adds a
+package or changes a licence text, `Licences` fails on it: run `just notices` on the Renovate
+branch and push a signed-off commit.
 
 ## Sign your commits (DCO)
 

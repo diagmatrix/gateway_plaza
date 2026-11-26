@@ -38,6 +38,8 @@ than calling tools directly, so you run what CI runs.
 | `just lint`, `just typecheck` | Lint and type-check |
 | `just test`, `just e2e` | Vitest and Playwright |
 | `just licence-check` | Fail on an incompatible dependency licence |
+| `just notices` | Regenerate `THIRD_PARTY_NOTICES` after a dependency change (`just notices-check` checks it) |
+| `just dco-check` | Fail on a commit without a sign-off |
 | `just ci` | Everything CI runs, in order. Run it before you call a change done. |
 | `just db-migrate` | Apply migrations |
 | `just symbols-sync`, `just cards-sync` | Pull mana symbols and card data from Scryfall |

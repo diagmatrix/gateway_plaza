@@ -16,9 +16,12 @@
     "format:check": "node scripts/not-set-up.mjs format:check",
     "format:files": "node scripts/not-set-up.mjs format:files",
     "typecheck": "node scripts/not-set-up.mjs typecheck",
-    "test": "node scripts/not-set-up.mjs test",
+    "test": "vitest run",
     "e2e": "node scripts/not-set-up.mjs e2e",
-    "licence-check": "node scripts/not-set-up.mjs licence-check",
+    "licence-check": "node scripts/licence-check.mjs",
+    "notices": "node scripts/notices.mjs",
+    "notices:check": "node scripts/notices.mjs --check",
+    "dco-check": "node scripts/dco-check.mjs",
     "db:migrate": "node scripts/not-set-up.mjs db:migrate",
     "symbols:sync": "node scripts/not-set-up.mjs symbols:sync",
     "cards:sync": "node scripts/not-set-up.mjs cards:sync",
@@ -29,6 +32,7 @@
   },
   "packageManager": "pnpm@12.23.0+sha512.02da94ffaf133f46074322afe552f90d40b5f71ae259aefbccdacc5085b1d617e98d65e0131f5748b9b67445978ee5055d7d59a473f1eef0d504854fefcd5975",
   "devDependencies": {
-    "skills": "1.9.0"
+    "skills": "1.9.0",
+    "vitest": "5.1.2"
   }
 }

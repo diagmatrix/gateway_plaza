@@ -56,6 +56,16 @@ typecheck:
 licence-check:
     pnpm run licence-check
 
+# Fail if THIRD_PARTY_NOTICES is out of date with the dependency tree
+[group('check')]
+notices-check:
+    pnpm run notices:check
+
+# Fail on a commit without a DCO sign-off (default range: origin/main..HEAD)
+[group('check')]
+dco-check *args:
+    pnpm run dco-check {{ args }}
+
 # Run the unit tests (Vitest)
 [group('check')]
 test *args:
@@ -68,7 +78,12 @@ e2e *args:
 
 # Run every check CI runs, in the same order
 [group('check')]
-ci: format-check lint typecheck licence-check test e2e
+ci: format-check lint typecheck licence-check notices-check dco-check test e2e
+
+# Regenerate THIRD_PARTY_NOTICES from the production dependencies
+[group('develop')]
+notices:
+    pnpm run notices
 
 # Apply database migrations (uses DATABASE_MIGRATION_URL)
 [group('data')]
