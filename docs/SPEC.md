@@ -1,6 +1,6 @@
 # Commander Game Tracker — Specification
 
-Status: **Draft v0.26** · Last updated: 2026-11-24
+Status: **Draft v0.27** · Last updated: 2026-11-25
 
 A web app for Magic: The Gathering Commander players to log games, track stats per player, deck and playgroup, and browse a public global dashboard of commander statistics. Deployed on Vercel. The look and feel is themed on the plane of **Ravnica**: a vast gothic city.
 
@@ -10,6 +10,7 @@ A web app for Magic: The Gathering Commander players to log games, track stats p
 
 | Version | Date | Changes |
 |---|---|---|
+| v0.27 | 2026-11-25 | Commanders pages (decisions #82, #83): a public `/commanders` browser over all games (§3.7.2) and a members' `/g/[id]/commanders` view per playgroup (§3.6.1), with search, colour filters, tiers, matchups and a detail page per commander or pair. |
 | v0.26 | 2026-11-24 | Two Postgres roles (decision #81): an owner role for migrations and an app role with DML only, which can't update votes. New `DATABASE_MIGRATION_URL`. |
 | v0.25 | 2026-11-24 | Data model review (US-01) complete: `game_players` agreed (partial unique indexes for one starter and one winner, composite FKs for deck ownership, eliminations and legal pairs), approved flagged games keep their reasons (`flag_approved_at`), §5.1 delete rules rewritten for every table, "Pending review" removed, decision #22 updated. |
 | v0.24 | 2026-11-24 | Data model review (US-01): `decks` and `games` agreed. Games drop `source` and `flagged` (flagged = non-empty `flag_reasons`), `win_condition` becomes `win_method`, locks get `locked_at`. Games of a deleted playgroup become anonymous games and go through the soft checks (decision #80). |
@@ -211,6 +212,14 @@ One fixed list, used for both the win condition and elimination methods (no free
 
 **Playgroup:** leaderboard (wins, win rate with a minimum-games threshold set by the group's admins, never below 5), games over time, most-played commanders, starting-player advantage, average game length (turns/minutes). Spirits keep their seats in game lists, but are left out of the leaderboard ranking and head-to-head.
 
+#### 3.6.1 Playgroup commanders
+`/g/[id]/commanders` lists every commander (or pair) played in the group, using the shared commanders browser of §3.7.2 over the group's games only. On top of what the global page shows, a member also sees:
+- **Players**: who played that commander in the group, members and guests, with how many games each. Spirits appear as "Spirit".
+- **Timeline**: the dates it was played, each marked as all wins, all losses or mixed, with the number of games that day.
+- Tiers use the group's leaderboard threshold (§3.6) as the minimum number of games, instead of the global N.
+
+Where a group is public (§4), its commanders page follows the same visibility and pseudonym rules as the rest of its public pages.
+
 ### 3.7 Global dashboard (public)
 Commander totals, built from **all games**: playgroup games plus anonymous ones.
 - Total games, number of active commanders (commanders with at least one counted game)
@@ -230,6 +239,17 @@ The commander totals never show player names, playgroup names, or individual gam
 - Win rate ranking needs a minimum number of games (default 20). The pod-size filter applies.
 - Each entry shows the player's profile picture, display name and handle, and links to their public profile.
 - Guests and Spirits never appear.
+
+#### 3.7.2 Commanders browser
+`/commanders` is a public page listing every **active commander** (decision #50), built from the same games as the dashboard and with the same filters (pod size; "All games" / "Playgroup games only"). Flagged games are left out.
+- **Summary**: number of active commanders, top colour identities, most-played commanders.
+- **Browse**: search by name; colour identity filter (W, U, B, R, G, colourless) with **exact**, **at most** and **at least** modes; sort by name, games, wins, win rate or tier, ascending or descending. Filters, sort and page live in the URL so a view can be shared. Results are paginated on the server.
+- **Entries**: a partner pair is one entry, in canonical order (§3.3), with a combined colour identity. Each entry shows the art crop(s) with artist credit, name(s), colour identity, wins / games, win rate and tier.
+- **Tiers** (decision #83): commanders with at least N games (the dashboard's threshold, default 10) are split into quartiles by win rate: **S**, **A**, **B**, **C**. Others are "Unranked". Next to the tier, the **delta** is the win rate minus the expected win rate, which is the average of 1 / pod size over the commander's games, so a 4-player-only commander is compared with 25% and a mix of pod sizes is compared fairly. Tiers are always shown with the label, never by colour alone.
+- **Detail** `/commanders/[slug]`: colour identity, games, wins, draws, win rate, tier and delta, each with its count; links to Scryfall and EDHREC; and a **matchups** table against every opponent commander seen in the same games: games together, this commander won, the opponent won, neither won (another seat won, or a draw). Sortable and paginated. When the same commander sat on several seats (decision #40), the mirror counts as a matchup against itself, and a seat is never matched against itself.
+- **Slug**: the card name lowercased, unaccented and joined with hyphens; a pair joins both slugs with `--` in canonical order. A pair in the other order redirects to the canonical URL.
+
+Like the rest of the dashboard, it never shows player names, playgroup names or individual games, and is cached and revalidated periodically.
 
 ### 3.8 Notifications
 - **In-app only** (no email). Notifications are kept forever. Types:
@@ -538,6 +558,8 @@ The app's source code is licensed under **GNU AGPL-3.0-or-later** (SPDX `AGPL-3.
 ## 8. Pages
 - `/` — landing page, global dashboard preview, "Log an anonymous game"
 - `/stats` — global dashboard, including the public player leaderboard
+- `/commanders` — public commanders browser (§3.7.2)
+- `/commanders/[slug]` — one commander or pair: stats, tier, matchups
 - `/submit` — anonymous game form
 - `/login`
 - `/onboarding` — choose display name and handle (first sign-in)
@@ -547,6 +569,8 @@ The app's source code is licensed under **GNU AGPL-3.0-or-later** (SPDX `AGPL-3.
 - `/u/[handle]` — public profile (if public); Spirits have none
 - `/groups` — my playgroups, create/join
 - `/g/[id]` — playgroup overview (leaderboard, recent games)
+- `/g/[id]/commanders` — the group's commanders, with players and timeline (§3.6.1)
+- `/g/[id]/commanders/[slug]` — one commander or pair within the group
 - `/g/[id]/games/new` — log a game
 - `/g/[id]/games/[gameId]` — game detail / edit, lock/unlock (admins)
 - `/g/[id]/settings` — members, guests, claims, invite link, visibility, leaderboard threshold, archive/delete (admins)
@@ -650,6 +674,8 @@ The app's source code is licensed under **GNU AGPL-3.0-or-later** (SPDX `AGPL-3.
 | 79 | No database triggers | The schema holds keys, foreign keys, unique indexes and named CHECKs only. Rules that span rows or tables are enforced by the app, in one transaction that locks the parent row, and covered by integration tests. |
 | 80 | Deleted playgroups | When a group with games is deleted (no members left), its games become anonymous games and go through the soft checks; they're never deleted with the group. |
 | 81 | Database roles | An owner role runs migrations; the app runs as a role with DML only and no `UPDATE` on `guest_claim_votes`. |
+| 82 | Commanders pages | One commanders browser, used globally (`/commanders`, public, anonymous totals) and per playgroup (`/g/[id]/commanders`, members, adds players and timeline). Modelled on cmd_results' Commanders page. |
+| 83 | Commander tiers | Quartiles of win rate over commanders with at least the minimum games (global N, or the group's leaderboard threshold). Delta against the expected win rate, the average of 1 / pod size. |
 
 ### 10.1 Open questions
 None right now.
@@ -662,9 +688,9 @@ None right now.
 2. **Decks & Scryfall**: daily Oracle Cards and Default Cards sync into `cards`, `printings` and `commanders`, first import, commander autocomplete with pairing rules, deck CRUD (including generic decks), profile picture picker.
 3. **Playgroups**: create, invite, join, roles, guests.
 4. **Game logging**: form with deck suggestions and generic decks, edit/delete, game locking, game detail.
-5. **Stats**: player, deck and playgroup pages.
+5. **Stats**: player, deck and playgroup pages, including the playgroup commanders page.
 6. **Privacy**: public profiles and groups, Ravnica pseudonyms with character and location art.
-7. **Global**: anonymous submission, anti-spam, global dashboard, public player leaderboard, site admin.
+7. **Global**: anonymous submission, anti-spam, global dashboard, commanders browser, public player leaderboard, site admin.
 8. **Polish**: guest claiming (with eligibility check), privacy policy and legitimate interest assessment (§4.1), data export, account deletion (Spirits), tests, performance, theme polish.
 
 The app goes **public after milestone 8** (decision #53). Earlier milestones can be used privately for testing.

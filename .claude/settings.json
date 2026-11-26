@@ -1,0 +1,78 @@
+{
+    "$schema": "https://json.schemastore.org/claude-code-settings.json",
+    "permissions": {
+        "allow": [
+            "Bash(just)",
+            "Bash(just --list)",
+            "Bash(just setup)",
+            "Bash(just dev *)",
+            "Bash(just format *)",
+            "Bash(just format-check)",
+            "Bash(just lint *)",
+            "Bash(just typecheck)",
+            "Bash(just licence-check)",
+            "Bash(just test *)",
+            "Bash(just e2e *)",
+            "Bash(just ci)",
+            "PowerShell(just)",
+            "PowerShell(just --list)",
+            "PowerShell(just setup)",
+            "PowerShell(just dev *)",
+            "PowerShell(just format *)",
+            "PowerShell(just format-check)",
+            "PowerShell(just lint *)",
+            "PowerShell(just typecheck)",
+            "PowerShell(just licence-check)",
+            "PowerShell(just test *)",
+            "PowerShell(just e2e *)",
+            "PowerShell(just ci)",
+            "Bash(git status *)",
+            "Bash(git diff *)",
+            "Bash(git log *)",
+            "Bash(git show *)",
+            "Bash(git branch --show-current)",
+            "Bash(ls *)",
+            "Bash(pnpm list *)",
+            "Bash(pnpm why *)",
+            "Bash(pnpm outdated *)",
+            "Bash(node --version)",
+            "Bash(pnpm --version)",
+            "Bash(just --version)"
+        ],
+        "deny": [
+            "Read(**/.env)",
+            "Read(**/.env.local)",
+            "Read(**/.env.*.local)",
+            "Read(**/.env.development)",
+            "Read(**/.env.preview)",
+            "Read(**/.env.production)",
+            "Read(**/.env.test)"
+        ]
+    },
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write|MultiEdit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "node",
+                        "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/format-edited-file.mjs"]
+                    }
+                ]
+            }
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "Bash|PowerShell",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "node",
+                        "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/require-signoff.mjs"]
+                    }
+                ]
+            }
+        ]
+    }
+}

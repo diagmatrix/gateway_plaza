@@ -135,6 +135,73 @@ git push --force-with-lease
   Scryfall data under Scryfall's terms. The AGPL grants no rights to either. Don't add WotC
   fonts (such as Beleren), guild symbols or re-hosted card images.
 
+## Coding agents
+
+[`AGENTS.md`](AGENTS.md) holds the instructions every coding agent reads: stack, commands,
+rules and which skill to use when. [`CLAUDE.md`](CLAUDE.md) imports it and adds only what is
+specific to Claude Code. Change project rules in `AGENTS.md`, never in both.
+
+### Claude Code setup (`.claude/`)
+
+Everything in `.claude/` is committed, except `settings.local.json` for your own overrides.
+
+| Path | What it does |
+|---|---|
+| `settings.json` | Lets Claude run the `just` recipes and common read-only commands without asking, and stops it reading `.env` files. `just db-migrate` and the Scryfall syncs still ask. |
+| `hooks/format-edited-file.mjs` | After every edit, formats the file through the `format:files` script. |
+| `hooks/require-signoff.mjs` | Refuses a `git commit` without a DCO sign-off (`-s`). |
+| `agents/spec-checker.md` | Subagent: compares a change with the spec and the story's acceptance criteria. |
+| `agents/code-reviewer.md` | Subagent: reviews against the Definition of Done, authorization and licensing. |
+| `agents/test-writer.md` | Subagent: writes Vitest and Playwright tests. |
+| `skills/implement-story/` | Skill: read the story, plan, build, test, check and prepare the PR. |
+| `skills/spec-change/` | Skill: change SPEC.md (changelog, decisions) and BACKLOG.md together. |
+
+The `.env` rule lists the usual file names (`.env`, `.env.local`, `.env.*.local`,
+`.env.development`, `.env.preview`, `.env.production`, `.env.test`) rather than `.env*`, so
+agents can still read and update `.env.example`. Keep secrets in files with those names.
+
+Skills for code that doesn't exist yet (our migration workflow, design system components,
+card sync) are added in the milestone that creates that code.
+
+### Third-party skills
+
+Third-party skills are **never committed**: some have no licence, and this repo is public.
+[`skills-lock.json`](skills-lock.json) pins each one to a commit with a content hash, and
+`just setup` installs them with the [`skills`](https://github.com/vercel-labs/skills) CLI
+(a dev dependency) into `.agents/skills/`, linked into `.claude/skills/`. The install never
+changes the lock and fails if a skill's files don't match their hash. Those folders are
+git-ignored by name. Anything else that runs an agent, such as a CI job, runs `just setup`
+first.
+
+| Skill | Source | Licence |
+|---|---|---|
+| `sql-style-guide` | `diagmatrix/sql-style-guide` | None stated |
+| `better-auth-best-practices`, `better-auth-security-best-practices` | `better-auth/skills` | None stated |
+| `neon-postgres` | `neondatabase/agent-skills` | Apache-2.0 |
+| `vercel-react-best-practices`, `vercel-composition-patterns` | `vercel-labs/agent-skills` | MIT (skill metadata) |
+| `web-design-guidelines` | `vercel-labs/agent-skills` | MIT (repo README) |
+| `next-dev-loop` | `vercel/next.js` | MIT |
+| `playwright-cli` | `microsoft/playwright-cli` | Apache-2.0 |
+
+Skills are instructions an agent follows with your permissions, so each one is reviewed
+before it's added or updated, like a dependency:
+
+1. Install it at a full commit SHA, which also records it in the lock:
+
+   ```sh
+   pnpm exec skills add <owner/repo>@<commit> --skill <name> --agent claude-code --yes
+   ```
+
+2. Read every file it installed. Look for scripts, commands it tells the agent to run,
+   network calls, tools it pre-approves (`allowed-tools`) and advice that clashes with
+   `AGENTS.md` or the spec.
+3. Add its folder name to `.gitignore`, its row to the table above with its licence, and a
+   line to the "Skills" section of `AGENTS.md` saying when to use it.
+4. Open a PR with `skills-lock.json` and those changes, saying what you reviewed.
+
+To update a skill, run the same command with the new commit and review the diff between the
+two commits.
+
 ## Dependency updates
 
 [Renovate](https://docs.renovatebot.com/) opens update PRs, configured in

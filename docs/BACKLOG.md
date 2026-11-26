@@ -17,9 +17,9 @@ Based on **SPEC.md v0.13** (2026-11-23). This file does not change the spec. Whe
 | M2 | **Card data & decks** | Local Scryfall data, commander picking, decks, profile pictures and account details | US-15 – US-26, US-81 |
 | M3 | **Playgroups** | Groups, invites, membership, roles, guests, archiving | US-27 – US-34, US-82, US-83, US-89 |
 | M4 | **Game logging** | Logging, editing and locking games in a group, plus guest claims (including public claims) | US-35 – US-47, US-84 – US-86, US-88, US-90 |
-| M5 | **Stats** | Player, deck, head-to-head and playgroup stats | US-48 – US-54, US-87 |
+| M5 | **Stats** | Player, deck, head-to-head and playgroup stats, playgroup commanders page | US-48 – US-54, US-87, US-101 |
 | M6 | **Privacy & public pages** | Public profiles and groups, Ravnica pseudonyms | US-55 – US-62 |
-| M7 | **Global pool & dashboard** | Anonymous submission, anti-spam, global dashboard, player leaderboard, site admin | US-63 – US-72 |
+| M7 | **Global pool & dashboard** | Anonymous submission, anti-spam, global dashboard, commanders browser, player leaderboard, site admin | US-63 – US-72, US-100 |
 | M8 | **Account lifecycle & launch readiness** | Data export, account deletion (Spirits), final legal texts, E2E suite, performance and polish. **The app goes public at the end of M8** (decision #53). | US-73 – US-80 |
 | — | **Later** (not v1) | Designed for, not built: live mode, decklist import, seasons, teams | L-01 – L-04 |
 
@@ -563,6 +563,17 @@ As a member, I want the group's leaderboard and trends on the overview, so that 
 As a member, I want a guest's games grouped by commander, so that guests' results are as useful as members'.
 - AC1: A guest's seats are grouped by commander(s) the same way generic decks are.
 
+**US-101 · Browse a playgroup's commanders** (§3.6.1, §3.7.2, decisions #82 and #83)
+As a member, I want to browse every commander played in my group, with who played it and when, so that we can see which commanders do well at our table.
+- AC1: `/g/[id]/commanders` is for members only. Everyone else gets "not found" (until public groups ship in M6, US-58).
+- AC2: Builds the shared commanders browser of §3.7.2 (summary, search, colour filter with exact / at most / at least, sort, server pagination, state in the URL), fed by the group's games only. US-100 reuses it for the global page.
+- AC3: A pair is one entry in canonical order (decision #36), with the union of both colour identities. Art crops credit the artist.
+- AC4: Tiers S–C are quartiles of win rate over commanders with at least the group's leaderboard threshold (US-87). The delta is win rate minus the average of 1 / pod size over its games. Shown with the label and sample count, never by colour alone.
+- AC5: `/g/[id]/commanders/[slug]` shows games, wins, draws, win rate, tier and delta with counts; Scryfall and EDHREC links; the matchups table (games together, won, opponent won, neither won; sortable, paginated); players with their game counts (Spirits as "Spirit"); and a timeline of dates marked all wins, all losses or mixed, with a text label as well as colour.
+- AC6: Slugs follow §3.7.2. A pair slug in the other order redirects to the canonical one. An unknown slug is "not found".
+- AC7: Counting follows US-48: draws are games with no winner, the pod-size filter applies, mirror matchups (decision #40) never match a seat against itself.
+- AC8: Unit tests cover tier quartiles and the threshold, the expected win rate for mixed pod sizes, draws, pairs in both orders, mirror matchups, and each colour filter mode. A Playwright test covers filtering and opening a commander.
+
 **US-87 · Set the group's leaderboard threshold** (§3.6, decisions #44 and #66)
 As a playgroup admin, I want to set how many games a player needs to be ranked by win rate, so that the leaderboard fits how often we play.
 - AC1: Setting in `/g/[id]/settings`. Values below 5 are rejected.
@@ -656,6 +667,15 @@ As a visitor, I want global commander stats, so that I can see what's popular an
 - AC3: Never shows player names, group names or individual games. Flagged games are excluded.
 - AC4: Cached and revalidated periodically (e.g. every 10 minutes).
 
+**US-100 · Browse global commanders** (§3.7.2, decisions #82 and #83)
+As a visitor, I want to browse every commander across all games, with tiers and matchups, so that I can see which commanders are played and how they fare against each other.
+- AC1: `/commanders` and `/commanders/[slug]` are public. They reuse the commanders browser built in US-101, fed by the same games as `/stats`.
+- AC2: Lists active commanders only (decision #50). Flagged games are excluded. The pod-size and "All games" / "Playgroup games only" filters apply, as in US-68.
+- AC3: Tiers use the dashboard's N (default 10) as the minimum number of games.
+- AC4: The detail page shows stats, tier, delta, Scryfall and EDHREC links and matchups. No players list and no timeline: never player names, playgroup names or individual games (§3.7).
+- AC5: Cached and revalidated like the dashboard (US-68 AC4).
+- AC6: A Playwright test checks that no player or group name appears on either page with seeded data.
+
 **US-69 · Preview the dashboard on the home page** (§8)
 As a visitor, I want the home page to show a taste of the global stats and a way to log a game, so that I understand the app straight away.
 - AC1: `/` shows a dashboard preview, a "Log an anonymous game" call to action and sign-in.
@@ -746,8 +766,8 @@ Every feature section of the spec maps to at least one story:
 | §3.3 Decks | US-17, US-20 – US-23, US-54, US-88 |
 | §3.4 Logging | US-35 – US-45 |
 | §3.5 Anonymous | US-63 – US-65 |
-| §3.6 Stats | US-48 – US-54, US-87 |
-| §3.7 Dashboard & leaderboard | US-68 – US-72 |
+| §3.6 Stats | US-48 – US-54, US-87, US-101 |
+| §3.7 Dashboard & leaderboard | US-68 – US-72, US-100 |
 | §4 Privacy, Spirits, GDPR | US-13, US-14, US-55 – US-62, US-73 – US-77 |
 | §5 Data model | US-01, US-05, US-71 |
 | §6 Anti-spam | US-64 – US-67 |

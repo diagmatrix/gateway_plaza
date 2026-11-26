@@ -13,6 +13,9 @@
 # Windows install has, so contributors don't need Git Bash or WSL.
 set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 
+# The skills CLI (used by `setup`) sends anonymous usage telemetry unless this is set.
+export DISABLE_TELEMETRY := "1"
+
 # List every recipe with its description
 default:
     @{{ just_executable() }} --list --unsorted --justfile "{{ justfile() }}"
