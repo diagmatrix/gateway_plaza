@@ -1,0 +1,585 @@
+// Commander Game Tracker — data model (Postgres on Neon, Drizzle, Better Auth)
+// Reviewed table by table. Tables are added here once agreed.
+// Regex character classes ([[:alpha:]]) must match Unicode letters: verify the database
+// ctype/collation on Neon in the integration tests.
+// No database triggers (decision #79): the schema holds keys, FKs, unique indexes and
+// CHECKs; rules across rows are enforced by the app in transactions.
+// Conventions: snake_case, plural table names, uuid PKs (gen_random_uuid()),
+// is_/has_ booleans, _at timestamptz, _date dates, every CHECK named.
+
+Project commander_game_tracker {
+  database_type: 'PostgreSQL'
+}
+
+// ─────────────────────────────────────────────────────────────
+// users — Better Auth `user` model (modelName: "users", fields mapped to
+// snake_case) + admin plugin fields + our additionalFields.
+// ─────────────────────────────────────────────────────────────
+Table users {
+  id                     uuid        [pk, default: `gen_random_uuid()`]  // advanced.database.generateId: "uuid"
+  email                  text        [not null, unique]                  // Spirit: 'spirit-<id>@deleted.invalid'
+  email_verified         boolean     [not null, default: false]
+  display_name           text        [not null]                          // Better Auth "name"; '' until onboarding for magic-link sign-ups
+  image                  text        [null]                              // Better Auth core field; always null (Google photo stripped in mapProfileToUser)
+  handle                 text        [null]                              // null until onboarding, and for Spirits
+  avatar_printing_id     uuid        [null, ref: > printings.scryfall_id] // null = default picture (Totally Lost, GTC #54); Spirit picture derived from deleted_at
+  is_profile_public      boolean     [not null, default: false]
+  is_leaderboard_public  boolean     [not null, default: false]
+  timezone               text        [null]                              // IANA name, validated in the app
+  site_role              text        [not null, default: 'user']         // admin plugin "role" (input: false)
+  is_banned              boolean     [not null, default: false]          // admin plugin "banned"
+  ban_reason             text        [null]                              // admin plugin "banReason"
+  ban_expires_at         timestamptz [null]                              // admin plugin "banExpires"; null = permanent
+  created_at             timestamptz [not null, default: `now()`]
+  updated_at             timestamptz [not null, default: `now()`]
+  deleted_at             timestamptz [null]                              // set = Spirit
+
+  indexes {
+    `lower(handle)` [unique, name: 'users_handle_lower_key']
+  }
+
+  Note: '''
+  Not onboarded = handle IS NULL AND deleted_at IS NULL.
+  Account deletion: if nothing outside the user's own data references the row (no seats,
+  no games created/logged/edited/locked, no groups founded, no claims reviewed, ...),
+  the row is hard-deleted; otherwise it becomes a Spirit (§4).
+  The admin plugin's remove-user, impersonate and set-password permissions are disabled
+  through access control; deletion always goes through our own flow.
+
+  CHECK constraints:
+  - users_handle_format_check: handle ~ '^[A-Za-z0-9._-]{8,20}$'  (also rules out the reserved 6-char "spirit")
+  - users_site_role_check: site_role IN ('user', 'admin')  (one role only, though the plugin allows a comma list)
+  - users_leaderboard_needs_public_profile_check: NOT is_leaderboard_public OR is_profile_public
+  - users_image_is_null_check: image IS NULL
+  - users_onboarded_has_name_check: handle IS NULL OR display_name <> ''
+  - users_ban_fields_check: is_banned OR (ban_reason IS NULL AND ban_expires_at IS NULL)
+  - users_spirit_is_anonymised_check: deleted_at IS NULL OR (
+        email = 'spirit-' || id || '@deleted.invalid' AND display_name = 'Spirit'
+        AND handle IS NULL AND timezone IS NULL AND avatar_printing_id IS NULL
+        AND NOT is_profile_public AND site_role = 'user')
+  '''
+}
+
+// ─────────────────────────────────────────────────────────────
+// Better Auth tables, renamed via modelName and fields. Listed as Better Auth
+// defines them (v1.7); not reviewed column by column.
+// ─────────────────────────────────────────────────────────────
+Table sessions {
+  id               uuid        [pk, default: `gen_random_uuid()`]
+  user_id          uuid        [not null, ref: > users.id]   // ON DELETE CASCADE
+  token            text        [not null, unique]
+  expires_at       timestamptz [not null]
+  ip_address       text        [null]
+  user_agent       text        [null]
+  impersonated_by  uuid        [null, ref: > users.id]       // admin plugin; impersonation disabled
+  created_at       timestamptz [not null, default: `now()`]
+  updated_at       timestamptz [not null, default: `now()`]
+
+  Note: 'CHECK sessions_no_impersonation_check: impersonated_by IS NULL'
+}
+
+Table accounts {
+  id                        uuid        [pk, default: `gen_random_uuid()`]
+  user_id                   uuid        [not null, ref: > users.id]  // ON DELETE CASCADE
+  account_id                text        [not null]                   // provider's id for the user
+  provider_id               text        [not null]                   // 'google' | 'credential' etc.
+  access_token              text        [null]
+  refresh_token             text        [null]
+  id_token                  text        [null]
+  access_token_expires_at   timestamptz [null]
+  refresh_token_expires_at  timestamptz [null]
+  scope                     text        [null]
+  password                  text        [null]                       // unused: no passwords
+  created_at                timestamptz [not null, default: `now()`]
+  updated_at                timestamptz [not null, default: `now()`]
+}
+
+Table verifications {
+  id          uuid        [pk, default: `gen_random_uuid()`]
+  identifier  text        [not null]
+  value       text        [not null]
+  expires_at  timestamptz [not null]
+  created_at  timestamptz [not null, default: `now()`]
+  updated_at  timestamptz [not null, default: `now()`]
+}
+
+// ─────────────────────────────────────────────────────────────
+// playgroups
+// ─────────────────────────────────────────────────────────────
+Table playgroups {
+  id                     uuid        [pk, default: `gen_random_uuid()`]
+  name                   text        [not null]
+  description            text        [null]
+  is_public              boolean     [not null, default: false]
+  invite_code            text        [null, unique]                 // 10 random URL-safe chars from the app; admins regenerate; null = disabled
+  creator_id             uuid        [not null, ref: > users.id]    // current creator, first the person who made it; transferable. ON DELETE RESTRICT
+  leaderboard_min_games  integer     [not null, default: 5]
+  archived_at            timestamptz [null]
+  archived_by            uuid        [null, ref: > users.id]        // ON DELETE SET NULL (backstop)
+  created_at             timestamptz [not null, default: `now()`]
+  updated_at             timestamptz [not null, default: `now()`]
+
+  Note: '''
+  No separate founder column (decision #76).
+  creator_id is NOT NULL: a group with no members is deleted in the same transaction,
+  and the creator must hand over before leaving (§3.2). That the creator is a current
+  admin member is enforced by the app (no DB triggers, decision #79).
+  archived_by on account deletion: handed to the longest-standing remaining admin, else
+  member, by the deletion flow; SET NULL only if the group has no members left (decision #77).
+
+  CHECK constraints:
+  - playgroups_name_format_check: name ~ '^[[:alpha:][:digit:] ._-]{4,50}$'  (any Unicode letter, e.g. "Peña del Jueves")
+  - playgroups_name_spacing_check: name = btrim(name) AND position('  ' in name) = 0
+  - playgroups_invite_code_format_check: invite_code ~ '^[A-Za-z0-9_-]{10}$'
+  - playgroups_archived_has_no_invite_check: archived_at IS NULL OR invite_code IS NULL
+  - playgroups_archived_by_needs_archived_at_check: archived_by IS NULL OR archived_at IS NOT NULL
+  - playgroups_leaderboard_min_games_check: leaderboard_min_games >= 5
+  '''
+}
+
+// ─────────────────────────────────────────────────────────────
+// playgroup_members — current and former members (decision #46)
+// ─────────────────────────────────────────────────────────────
+Table playgroup_members {
+  playgroup_id  uuid        [not null, ref: > playgroups.id]  // ON DELETE CASCADE
+  user_id       uuid        [not null, ref: > users.id]       // ON DELETE CASCADE (own data, removed on account deletion)
+  role          text        [not null, default: 'member']
+  joined_at     timestamptz [not null, default: `now()`]      // latest join; reset on rejoin (drives "longest-standing")
+  left_at       timestamptz [null]                            // set = former member; cleared on rejoin
+  created_at    timestamptz [not null, default: `now()`]      // first join
+  updated_at    timestamptz [not null, default: `now()`]
+
+  indexes {
+    (playgroup_id, user_id) [pk]
+    user_id [name: 'playgroup_members_user_id_idx']  // the PK can't serve lookups by user_id alone
+  }
+
+  Note: '''
+  CHECK constraints:
+  - playgroup_members_role_check: role IN ('admin', 'member')
+  - playgroup_members_left_after_joined_check: left_at IS NULL OR left_at >= joined_at
+  - playgroup_members_former_is_member_check: left_at IS NULL OR role = 'member'
+
+  Enforced in the app, in one transaction that locks the playgroups row (no DB triggers):
+  - every group with current members has at least one current admin
+  - playgroups.creator_id is always a current admin of that group
+  '''
+}
+
+// ─────────────────────────────────────────────────────────────
+// guest_players
+// ─────────────────────────────────────────────────────────────
+Table guest_players {
+  id            uuid        [pk, default: `gen_random_uuid()`]
+  playgroup_id  uuid        [not null, ref: > playgroups.id]  // ON DELETE CASCADE
+  name          text        [not null]
+  claimed_by    uuid        [null, ref: > users.id]           // ON DELETE RESTRICT
+  claimed_at    timestamptz [null]
+  created_by    uuid        [null, ref: > users.id]           // who added the guest; ON DELETE SET NULL
+  created_at    timestamptz [not null, default: `now()`]
+  updated_at    timestamptz [not null, default: `now()`]
+
+  indexes {
+    (id, playgroup_id) [unique, name: 'guest_players_id_playgroup_id_key']  // target of guest_claims' composite FK
+    (playgroup_id, `lower(name)`) [unique, name: 'guest_players_unclaimed_name_key', note: 'WHERE claimed_by IS NULL']
+  }
+
+  Note: '''
+  A claimed guest keeps its row (claim history points at it; "Pablo is now @pablo"),
+  its seats move to the user, and its name is freed for a new guest in the group.
+
+  CHECK constraints:
+  - guest_players_name_format_check: name ~ '^[[:alpha:][:digit:] .''-]{1,30}$'  (Unicode letters, e.g. "José", "O'Brien")
+  - guest_players_name_spacing_check: name = btrim(name) AND position('  ' in name) = 0
+  - guest_players_claimed_fields_check: (claimed_by IS NULL) = (claimed_at IS NULL)
+  '''
+}
+
+// ─────────────────────────────────────────────────────────────
+// guest_claims — a member's request to take over a guest's seats (§3.2)
+// ─────────────────────────────────────────────────────────────
+Table guest_claims {
+  id               uuid        [pk, default: `gen_random_uuid()`]
+  playgroup_id     uuid        [not null]                          // copy of the guest's group, kept honest by the composite FK below
+  guest_id         uuid        [not null]
+  user_id          uuid        [not null, ref: > users.id]         // claimant; ON DELETE CASCADE
+  status           text        [not null, default: 'pending']
+  reviewed_by      uuid        [null, ref: > users.id]             // admin who approved/rejected; ON DELETE SET NULL
+  reviewed_at      timestamptz [null]
+  made_public_at   timestamptz [null]
+  voting_ends_at   timestamptz [null]                              // made_public_at + 1 month, set by the app
+  decided_at       timestamptz [null]
+  decided_by       uuid        [null, ref: > users.id]             // admin or overriding creator; null for vote/timeout/system. ON DELETE SET NULL
+  decision_method  text        [null]
+  created_at       timestamptz [not null, default: `now()`]
+  updated_at       timestamptz [not null, default: `now()`]
+
+  indexes {
+    (guest_id, user_id) [unique, name: 'guest_claims_guest_id_user_id_key']   // one claim row per user per guest, ever
+    (playgroup_id, user_id) [unique, name: 'guest_claims_one_per_group_key', note: "WHERE status IN ('pending', 'public', 'approved')"]
+    guest_id [name: 'guest_claims_guest_id_idx']
+  }
+
+  Note: '''
+  FK (guest_id, playgroup_id) → guest_players (id, playgroup_id) ON DELETE CASCADE.
+  playgroup_id is copied so that "one guest per user per playgroup" is a unique index;
+  the composite FK makes it impossible for the copy to disagree with the guest's group.
+
+  Flow:
+  - pending → approved | rejected (admin; reviewed_* and decided_* set, decision_method 'admin')
+  - pending, unreviewed for 1 month → claimant may make it public
+  - rejected by an admin → claimant may make it public within 1 month of decided_at
+  - → public: made_public_at, voting_ends_at set; decided_* cleared; reviewed_* kept
+  - public → approved | rejected by majority ('vote'), by the creator ('override'),
+    or rejected when voting closes ('voting_closed'). A rejection after going public is final.
+  - several users may claim the same guest; when one claim is approved, the other open
+    claims for that guest are rejected ('guest_claimed').
+  - archiving rejects open claims ('archived'); unarchiving puts them back to 'pending'
+    if the claimant is still a current member (and is re-checked for eligibility).
+
+  CHECK constraints:
+  - guest_claims_status_check: status IN ('pending', 'public', 'approved', 'rejected')
+  - guest_claims_decision_method_check: decision_method IN ('admin', 'vote', 'override', 'voting_closed', 'archived', 'guest_claimed')
+  - guest_claims_public_fields_check: (made_public_at IS NULL) = (voting_ends_at IS NULL)
+  - guest_claims_public_has_dates_check: status <> 'public' OR made_public_at IS NOT NULL
+  - guest_claims_decided_fields_check: (status IN ('approved', 'rejected')) = (decided_at IS NOT NULL)
+                                       AND (decided_at IS NULL) = (decision_method IS NULL)
+  - guest_claims_reviewed_fields_check: (reviewed_by IS NULL OR reviewed_at IS NOT NULL)
+  - guest_claims_vote_needs_public_check: decision_method NOT IN ('vote', 'voting_closed') OR made_public_at IS NOT NULL
+
+  Enforced in the app, in one transaction that locks the guest_players row:
+  - claimant is a current member of the group with no seats in it (on insert and on approval)
+  '''
+}
+
+Ref: guest_claims.(guest_id, playgroup_id) > guest_players.(id, playgroup_id) [delete: cascade]
+
+// ─────────────────────────────────────────────────────────────
+// guest_claim_votes — members' votes on public claims; immutable
+// ─────────────────────────────────────────────────────────────
+Table guest_claim_votes {
+  claim_id     uuid        [not null, ref: > guest_claims.id]  // ON DELETE CASCADE
+  user_id      uuid        [not null, ref: > users.id]         // ON DELETE CASCADE
+  is_accepted  boolean     [not null]
+  created_at   timestamptz [not null, default: `now()`]
+
+  indexes {
+    (claim_id, user_id) [pk]
+  }
+
+  Note: '''
+  No updated_at: a vote can't be changed. The app role has no UPDATE privilege on this table (decision #81).
+  When a voter leaves the group, their votes on open claims are deleted.
+  "More than half" is counted against current members other than the claimant,
+  after each vote and when voting closes.
+
+  Enforced in the app, in one transaction that locks the guest_claims row:
+  - voter is a current member, not the claimant, and the claim's status is 'public'
+  '''
+}
+
+// ─────────────────────────────────────────────────────────────
+// notifications — in-app only (§3.8); kept forever
+// ─────────────────────────────────────────────────────────────
+Table notifications {
+  id              uuid        [pk, default: `gen_random_uuid()`]
+  user_id         uuid        [not null, ref: > users.id]       // recipient; ON DELETE CASCADE
+  type            text        [not null]
+  guest_claim_id  uuid        [null, ref: > guest_claims.id]    // ON DELETE CASCADE
+  game_id         uuid        [null, ref: > games.id]           // ON DELETE CASCADE
+  created_at      timestamptz [not null, default: `now()`]
+  read_at         timestamptz [null]
+
+  indexes {
+    (user_id, created_at) [name: 'notifications_user_id_created_at_idx']                 // the /me list
+    user_id [name: 'notifications_unread_idx', note: 'WHERE read_at IS NULL']            // header badge count
+  }
+
+  Note: '''
+  No payload: each type points at its subject through a typed FK, and the text is built
+  when shown, from current data. A notification is deleted with its subject.
+
+  Types and recipients:
+  - claim_created      → the group's current admins
+  - claim_made_public  → current members except the claimant
+  - claim_decided      → the claimant (any approval or rejection, including an admin's
+                         rejection, with the deadline to make it public)
+  - game_logged        → every seated user of a new playgroup game except the person who logged it
+
+  CHECK constraints:
+  - notifications_type_check: type IN ('claim_created', 'claim_made_public', 'claim_decided', 'game_logged')
+  - notifications_subject_check: num_nonnulls(guest_claim_id, game_id) = 1
+  - notifications_claim_subject_check: left(type, 6) <> 'claim_' OR guest_claim_id IS NOT NULL
+  - notifications_game_subject_check: type <> 'game_logged' OR game_id IS NOT NULL
+  '''
+}
+
+// ─────────────────────────────────────────────────────────────
+// cards, printings — raw Scryfall data written only by the daily sync (§7.1).
+// No CHECK constraints: the data is Scryfall's, stored as received.
+// ─────────────────────────────────────────────────────────────
+Table cards {                               // Oracle Cards bulk file: one row per card
+  oracle_id           uuid        [pk]
+  scryfall_id         uuid        [not null]  // Scryfall's chosen printing; join printings for images, artist, set
+  name                text        [not null]
+  type_line           text        [not null]
+  color_identity      text[]      [not null]
+  keywords            text[]      [not null]
+  commander_legality  text        [not null]  // legalities.commander; raw keeps the rest
+  raw                 jsonb       [not null]
+  source_hash         text        [not null]  // skip unchanged rows (§7.1)
+  updated_at          timestamptz [not null]  // last time the sync changed the row
+
+  indexes {
+    `f_unaccent(name)` [type: gin, name: 'cards_name_trgm_idx', note: 'gin_trgm_ops; autocomplete']
+  }
+
+  Note: '''
+  Extensions: pg_trgm, unaccent. f_unaccent(text) is an IMMUTABLE SQL wrapper around
+  unaccent('public.unaccent', $1) so it can be indexed (plain unaccent() isn't immutable).
+  PENDING data check: is every scryfall_id present in printings (FK or not)?
+  '''
+}
+
+Table printings {                           // Default Cards bulk file: every English printing, tokens included
+  scryfall_id         uuid        [pk]
+  oracle_id           uuid        [null]      // PENDING data check: FK to cards or plain column
+  name                text        [not null]
+  set_code            text        [not null]  // lowercase, as Scryfall sends it
+  collector_number    text        [not null]  // text: '54', '123a', '★'
+  lang                text        [not null]
+  layout              text        [not null]
+  image_normal_url    text        [null]      // front face for double-faced cards
+  image_art_crop_url  text        [null]
+  artist              text        [null]
+  source_hash         text        [not null]
+  updated_at          timestamptz [not null]
+
+  indexes {
+    (set_code, collector_number, lang) [unique, name: 'printings_set_code_collector_number_lang_key'] // PENDING data check
+    oracle_id [name: 'printings_oracle_id_idx']
+  }
+
+  Note: '''
+  reversible_card objects have no top-level oracle_id (Scryfall docs: it's on each face).
+  '''
+}
+
+// ─────────────────────────────────────────────────────────────
+// commanders, commander_pairs — derived from cards by our sync (§7.1).
+// Rows are never deleted: decks and seats point at them. A card that disappears
+// from Scryfall is kept and logged for a human to review.
+// ─────────────────────────────────────────────────────────────
+Table commanders {
+  oracle_id               uuid        [pk, ref: - cards.oracle_id]   // ON DELETE RESTRICT
+  has_partner             boolean     [not null, default: false]     // plain "Partner"
+  partner_with_oracle_id  uuid        [null]                         // "Partner with [name]"; plain column, no FK
+  partner_variant         text        [null]                         // "Partner—[text]": 'Friends forever', 'Survivors', …
+  can_choose_background   boolean     [not null, default: false]
+  is_background           boolean     [not null, default: false]     // can't be a commander alone
+  is_doctor               boolean     [not null, default: false]     // Time Lord Doctor
+  is_doctors_companion    boolean     [not null, default: false]
+  updated_at              timestamptz [not null]
+
+  Note: '''
+  A card can have several pairing abilities (decision #68), hence one column each.
+
+  CHECK constraints:
+  - commanders_background_is_alone_check: NOT is_background
+        OR NOT (has_partner OR can_choose_background OR is_doctor OR is_doctors_companion
+                OR partner_with_oracle_id IS NOT NULL OR partner_variant IS NOT NULL)
+  - commanders_partner_with_not_self_check: partner_with_oracle_id IS DISTINCT FROM oracle_id
+  '''
+}
+
+Table commander_pairs {                    // every legal pair, in canonical order (§3.3)
+  first_id      uuid        [not null, ref: > commanders.oracle_id]  // ON DELETE RESTRICT
+  second_id     uuid        [not null, ref: > commanders.oracle_id]  // ON DELETE RESTRICT
+  pairing_type  text        [not null]
+  updated_at    timestamptz [not null]
+
+  indexes {
+    (first_id, second_id) [pk]
+    second_id [name: 'commander_pairs_second_id_idx']
+  }
+
+  Note: '''
+  Canonical order (alphabetical for symmetric pairs, creature before Background,
+  Doctor before companion) is set by the sync; it isn't by id, so no CHECK for it.
+
+  CHECK constraints:
+  - commander_pairs_distinct_check: first_id <> second_id
+  - commander_pairs_pairing_type_check: pairing_type IN ('partner', 'partner_with', 'partner_variant', 'background', 'doctor')
+  '''
+}
+
+// ─────────────────────────────────────────────────────────────
+// decks
+// ─────────────────────────────────────────────────────────────
+Table decks {
+  id            uuid        [pk, default: `gen_random_uuid()`]
+  owner_id      uuid        [not null, ref: > users.id]               // ON DELETE CASCADE (decks go with the account)
+  commander_id  uuid        [not null, ref: > commanders.oracle_id]   // ON DELETE RESTRICT
+  partner_id    uuid        [null, ref: > commanders.oracle_id]       // ON DELETE RESTRICT
+  name          text        [null]
+  url           text        [null]                                    // stored as-is, any http(s) link
+  bracket       smallint    [null]
+  archived_at   timestamptz [null]
+  created_at    timestamptz [not null, default: `now()`]
+  updated_at    timestamptz [not null, default: `now()`]
+
+  indexes {
+    (owner_id, commander_id, partner_id) [unique, name: 'decks_generic_deck_key', note: 'NULLS NOT DISTINCT WHERE name IS NULL AND url IS NULL']
+    commander_id [name: 'decks_commander_id_idx']
+    (id, owner_id) [unique, name: 'decks_id_owner_id_key']   // target of game_players' (deck_id, user_id) FK
+    owner_id [name: 'decks_owner_id_idx']
+  }
+
+  Note: '''
+  FK (commander_id, partner_id) → commander_pairs (first_id, second_id), MATCH SIMPLE:
+  a solo commander skips it; any pair must be legal and in canonical order.
+  Generic deck = name IS NULL AND url IS NULL; at most one per owner and commander(s).
+  No color_identity column: derived from cards through a join or view.
+
+  Enforced in the app: commanders never change; a name can't be removed once set; a deck
+  with a name or link never becomes generic; a Background can't be a solo commander.
+
+  CHECK constraints:
+  - decks_bracket_check: bracket BETWEEN 1 AND 5
+  - decks_name_check: name IS NULL OR (btrim(name) <> '' AND char_length(name) <= 60)  (free text, emoji allowed)
+  - decks_url_format_check: url IS NULL OR url ~ '^https?://'
+  '''
+}
+
+Ref: decks.(commander_id, partner_id) > commander_pairs.(first_id, second_id)
+
+// ─────────────────────────────────────────────────────────────
+// games — playgroup games and anonymous (global pool) games
+// ─────────────────────────────────────────────────────────────
+Table games {
+  id                 uuid        [pk, default: `gen_random_uuid()`]
+  playgroup_id       uuid        [null, ref: > playgroups.id]   // null = anonymous. ON DELETE RESTRICT (see note)
+  status             text        [not null, default: 'completed'] // 'in_progress' reserved for live mode
+  played_date        date        [not null]                     // not in the future: checked in the app
+  is_draw            boolean     [not null, default: false]
+  win_method         text        [null]                         // outcome method (§3.4.1)
+  turn_count         smallint    [null]
+  duration_minutes   smallint    [null]
+  bracket            smallint    [null]
+  notes              text        [null]                         // members only; never on anonymous games
+  locked_at          timestamptz [null]
+  locked_by          uuid        [null, ref: > users.id]        // ON DELETE RESTRICT
+  created_by         uuid        [null, ref: > users.id]        // the game's owner; reassigned to the group creator when they leave. RESTRICT
+  logged_by          uuid        [null, ref: > users.id]        // who logged it; never changes. RESTRICT
+  updated_by         uuid        [null, ref: > users.id]        // RESTRICT
+  submitter_ip_hash  text        [null]                         // anonymous submissions only
+  flag_reasons       text[]      [not null, default: '{}']      // soft-check reasons; kept after approval
+  flag_approved_at   timestamptz [null]                         // site admin approved it; flagged = flag_reasons <> '{}' AND flag_approved_at IS NULL
+  created_at         timestamptz [not null, default: `now()`]
+  updated_at         timestamptz [not null, default: `now()`]
+
+  indexes {
+    (playgroup_id, played_date, created_at) [name: 'games_playgroup_id_played_date_idx']
+    (submitter_ip_hash, created_at) [name: 'games_submitter_ip_hash_idx', note: 'WHERE playgroup_id IS NULL']
+    created_at [name: 'games_flagged_idx', note: "WHERE flag_reasons <> '{}' AND flag_approved_at IS NULL"]
+  }
+
+  Note: '''
+  Creator-seat rule applies while created_by = logged_by; once created_by is
+  reassigned they differ and the rule stops. No marker column needed.
+
+  Deleted playgroup (decision #80): when a group with games loses its last member, its games
+  are turned into anonymous games in the same transaction, before the group is deleted:
+  playgroup_id, notes, lock and user columns cleared; seats lose user, guest and deck links
+  (commanders, starter, results, placements and eliminations kept); the game's notifications
+  are deleted; then the soft checks that don't need an IP hash run (early_win,
+  same_commander, short_game). The FK is RESTRICT so no game is ever deleted with a group.
+  Converted games are ordinary anonymous games: they don't count as "playgroup games" on the dashboard.
+
+  CHECK constraints:
+  - games_status_check: status IN ('completed', 'in_progress')
+  - games_bracket_check: bracket BETWEEN 1 AND 5
+  - games_turn_count_check: turn_count BETWEEN 1 AND 50
+  - games_duration_minutes_check: duration_minutes BETWEEN 1 AND 1440
+  - games_win_method_check: win_method IN ('combat', 'commander_damage', 'combo', 'alt_win', 'poison',
+                                           'mill', 'life_loss_other', 'conceded', 'other')
+  - games_draw_has_no_win_method_check: NOT is_draw OR win_method IS NULL
+  - games_notes_length_check: char_length(notes) <= 2000
+  - games_anonymous_fields_check: playgroup_id IS NOT NULL OR (notes IS NULL AND locked_at IS NULL
+        AND created_by IS NULL AND logged_by IS NULL AND updated_by IS NULL)
+  - games_playgroup_fields_check: playgroup_id IS NULL OR (created_by IS NOT NULL AND logged_by IS NOT NULL
+        AND submitter_ip_hash IS NULL AND flag_reasons = '{}')
+  - games_flag_approved_check: flag_approved_at IS NULL OR flag_reasons <> '{}'
+  - games_flag_reasons_check: flag_reasons <@ ARRAY['burst', 'early_win', 'same_commander', 'short_game', 'duplicate']
+  - games_locked_fields_check: (locked_at IS NULL) = (locked_by IS NULL)
+  '''
+}
+
+// ─────────────────────────────────────────────────────────────
+// game_players — one row per seat
+// ─────────────────────────────────────────────────────────────
+Table game_players {
+  id                  uuid        [pk, default: `gen_random_uuid()`]
+  game_id             uuid        [not null, ref: > games.id]            // ON DELETE CASCADE
+  user_id             uuid        [null, ref: > users.id]                // ON DELETE RESTRICT (users become Spirits)
+  guest_id            uuid        [null, ref: > guest_players.id]        // ON DELETE RESTRICT
+  deck_id             uuid        [null]                                 // null = generic seat; composite FK below
+  commander_id        uuid        [not null, ref: > commanders.oracle_id] // kept even when a deck is linked
+  partner_id          uuid        [null, ref: > commanders.oracle_id]
+  seat                smallint    [null]                                 // turn order
+  is_starter          boolean     [not null, default: false]
+  is_winner           boolean     [not null, default: false]
+  placement           smallint    [null]                                 // standard competition ranking
+  eliminated_turn     smallint    [null]
+  eliminated_by       uuid        [null]                                 // composite FK below
+  elimination_method  text        [null]                                 // outcome method (§3.4.1)
+  created_at          timestamptz [not null, default: `now()`]
+  updated_at          timestamptz [not null, default: `now()`]
+
+  indexes {
+    (game_id, id) [unique, name: 'game_players_game_id_id_key']           // target of the eliminated_by FK
+    (game_id, user_id) [unique, name: 'game_players_game_id_user_id_key']
+    (game_id, guest_id) [unique, name: 'game_players_game_id_guest_id_key']
+    (game_id, seat) [unique, name: 'game_players_game_id_seat_key']
+    game_id [unique, name: 'game_players_one_starter_key', note: 'WHERE is_starter']
+    game_id [unique, name: 'game_players_one_winner_key', note: 'WHERE is_winner']
+    user_id [name: 'game_players_user_id_idx']
+    guest_id [name: 'game_players_guest_id_idx']
+    deck_id [name: 'game_players_deck_id_idx']
+    (commander_id, partner_id) [name: 'game_players_commanders_idx']
+  }
+
+  Note: '''
+  Composite FKs:
+  - (deck_id, user_id) → decks (id, owner_id) ON DELETE SET NULL (deck_id)   [Postgres 15+]
+      the deck belongs to the seated user; deleting a deck makes the seat generic and keeps the user
+  - (game_id, eliminated_by) → game_players (game_id, id) ON DELETE SET NULL (eliminated_by)
+      the eliminating player sat in the same game
+  - (commander_id, partner_id) → commander_pairs (first_id, second_id), MATCH SIMPLE
+      a pair must be legal and in canonical order
+
+  Enforced in the app (game service, one transaction locking the games row; decision #79):
+  - 2–8 seats; exactly one starter; exactly one winner unless is_draw, none if it is
+  - in a draw nobody has placement 1; if seats are set, every seat has one
+  - playgroup games: every seat has a user or a guest; the logger has a seat while created_by = logged_by
+  - the seat's commanders match its deck's; a Background is never a solo commander
+  - eliminated_turn <= games.turn_count
+
+  CHECK constraints:
+  - game_players_one_player_check: num_nonnulls(user_id, guest_id) <= 1
+  - game_players_deck_needs_user_check: deck_id IS NULL OR user_id IS NOT NULL
+  - game_players_seat_check: seat BETWEEN 1 AND 8
+  - game_players_placement_check: placement BETWEEN 1 AND 8
+  - game_players_eliminated_turn_check: eliminated_turn BETWEEN 1 AND 50
+  - game_players_elimination_method_check: elimination_method IN ('combat', 'commander_damage', 'combo',
+        'alt_win', 'poison', 'mill', 'life_loss_other', 'conceded', 'other')
+  - game_players_winner_check: NOT is_winner OR ((placement IS NULL OR placement = 1)
+        AND eliminated_turn IS NULL AND eliminated_by IS NULL AND elimination_method IS NULL)
+  - game_players_starter_seat_check: NOT is_starter OR seat IS NULL OR seat = 1
+  - game_players_not_self_eliminated_check: eliminated_by IS DISTINCT FROM id
+  '''
+}
+
+Ref: game_players.(deck_id, user_id) > decks.(id, owner_id)
+Ref: game_players.(game_id, eliminated_by) > game_players.(game_id, id)
+Ref: game_players.(commander_id, partner_id) > commander_pairs.(first_id, second_id)

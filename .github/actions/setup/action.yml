@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Shared setup for every CI job: pnpm (version from package.json
+# "packageManager"), Node (from .nvmrc), just, and the dependencies from the
+# lockfile. Third-party agent skills aren't installed: no CI job runs an agent.
+# A job that does must run `just setup` instead (CONTRIBUTING.md).
+
+name: Set up the toolchain
+description: Install pnpm, Node, just and the project's dependencies
+
+runs:
+  using: composite
+  steps:
+    - name: Install pnpm
+      uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+    - name: Install Node
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    - name: Install just
+      uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      with:
+        just-version: 1.59.0
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js and build output
+.next/
+out/
+build/
+dist/
+next-env.d.ts
+*.tsbuildinfo
+
+# Tests
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Environment: never commit secrets. Only the empty template is tracked.
+.env*
+!.env.example
+
+# Deployment
+.vercel/
+
+# Claude Code: personal overrides stay local
+.claude/settings.local.json
+
+# Third-party agent skills: `just setup` installs them from skills-lock.json.
+# Listed by name (no trailing slash, so the symlinks on macOS and Linux match
+# too) so our own skills in .claude/skills/ stay committed. Add a
+# line here whenever a skill is added to the lock.
+.agents/skills/
+.claude/skills/better-auth-best-practices
+.claude/skills/better-auth-security-best-practices
+.claude/skills/neon-postgres
+.claude/skills/next-dev-loop
+.claude/skills/playwright-cli
+.claude/skills/sql-style-guide
+.claude/skills/vercel-composition-patterns
+.claude/skills/vercel-react-best-practices
+.claude/skills/web-design-guidelines
+
+# Logs and caches
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.eslintcache
+.cache/
+
+# Editors and OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+.DS_Store
+Thumbs.db

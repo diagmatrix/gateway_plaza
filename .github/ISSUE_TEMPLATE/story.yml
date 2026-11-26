@@ -1,0 +1,44 @@
+name: User story
+description: A backlog story with acceptance criteria.
+title: "US-XX · "
+labels: ["story"]
+body:
+  - type: textarea
+    id: story
+    attributes:
+      label: Story
+      value: "As a ..., I want ..., so that ..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: One task per criterion, so progress shows on the issue.
+      value: |
+        - [ ] AC1:
+        - [ ] AC2:
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Spec sections
+      description: The docs/SPEC.md sections and decisions this story implements.
+      placeholder: e.g. §3.4, decision #64
+    validations:
+      required: true
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      placeholder: e.g. #12, #35
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Open questions, out of scope, design links.
+  - type: markdown
+    attributes:
+      value: |
+        Every story also has to meet the Definition of Done in CONTRIBUTING.md.

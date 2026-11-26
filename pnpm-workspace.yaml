@@ -1,0 +1,3 @@
+# pnpm settings live here (pnpm no longer reads them from .npmrc).
+# Refuse to install when the Node version doesn't match package.json "engines".
+engineStrict: true

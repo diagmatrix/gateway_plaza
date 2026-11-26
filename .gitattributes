@@ -1,0 +1,26 @@
+# Normalise line endings: LF in the repo and in every checkout, on every OS.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+
+# Binary files: never touch line endings or try to diff them.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.avif  binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+
+# Generated files: collapse them in diffs and leave them out of language stats.
+pnpm-lock.yaml        -diff linguist-generated
+THIRD_PARTY_NOTICES*  linguist-generated
